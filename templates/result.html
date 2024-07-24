@@ -1,0 +1,9 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mt-4">
+    <h2>{{ title | safe }}</h2>
+    <h4>{{ subtitle | safe }}</h4>
+    <hr/>
+    <p>{{ dynamic_text | safe }}</p>
+</div>
+{% endblock %}

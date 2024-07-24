@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mt-4">
+    <h1>{{ title }}</h1>
+    <form action="{{ url_for('result') }}" method="post">
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <label for="youtube_video_id" class="form-label">Youtube Video Id or URL</label>
+                <input type="text" class="form-control" id="youtube_video_id" name="youtube_video_id" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Length of summarization</label>
+                <div>
+                    {% for option in variable_list %}
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="options" id="{{ option }}" value="{{ option }}" required>
+                        <label class="form-check-label" for="{{ option }}">
+                            {{ option }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    <!-- Include this if you wish to allow the user to augment the user prompt (dangerous Prompt injection risk)
+        <div class="row mb-3">
+            <div class="col-md-9">
+                <label for="additional_prompt" class="form-label">Optional Additions to Prompt</label>
+                <textarea class="form-control" id="additional_prompt" name="additional_prompt" rows="4"></textarea>
+            </div>
+        </div>
+        -->
+        <button type="submit" class="btn btn-primary">Generate Summary</button>
+    </form>
+</div>
+{% endblock %}
