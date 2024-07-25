@@ -95,7 +95,7 @@ def get_transcript(video_id):
     except youtube_transcript_api.NoTranscriptFound:
         raise YouTubeError
 
-    full_text = ''
+    full_text = f'# Transcript of "{get_title(video_id)}"\n\n'
     for t in transcript:
         full_text += f"[{secs2string(t['start'])}] - {t['text']} <br>\n"
 
