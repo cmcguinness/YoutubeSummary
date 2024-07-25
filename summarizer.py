@@ -14,11 +14,23 @@ import ollama
 import os
 import md2html
 
+# Options we present for summary lengths
+summary_types = [
+    {"name": "2-3 Paragraph Summary", "value": "250"},
+    {"name": "Short summary and bullets", "value": "500"},
+    {"name": "Longer summary with more details", "value": "1000"},
+    {"name": "Summary, Themes, and Analysis with Timings", "value": "2500"},
+    {"name": "Full Transcript, no AI summarization of contents", "value": "Full Transcript"},
+]
 
 def get_summary(text, length, add_prompt):
     # We use the first word of the length radio button label as our key to find the appropriate
     # prompt file that will (try to) generate a summary of that length
-    key = length[:length.find(" ")]
+    if " " in length:
+        key = length[:length.find(" ")]
+    else:
+        key = length
+
 
     with open(f'prompts/{key}.md', 'r') as f:
         user = f.read()

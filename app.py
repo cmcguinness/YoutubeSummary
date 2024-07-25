@@ -20,8 +20,6 @@ app = Flask(__name__)
 # You should change this from my default!!!
 app.secret_key = 'The Rain in Spain falls Mainly on the Plain!'
 
-# Options we present for summary lengths
-variable_list = ["Full Transcript",  "250 Word", "500 Word", "1000 Word", "2500 Word"]
 
 #    ┌─────────────────────────────────────────────────────────┐
 #    │                            /                            │
@@ -63,7 +61,7 @@ def login():
 def index_page():
     if 'authenticated' not in session:
         return get_login_page()
-    return render_template('index.html', variable_list=variable_list, title='Select your video')
+    return render_template('index.html', variable_list=summarizer.summary_types, title='Which video to summarize?')
 
 
 #    ┌─────────────────────────────────────────────────────────┐
@@ -95,7 +93,7 @@ def result():
         return render_template('result.html', dynamic_text=full_text, title=title, subtitle='Full transcript')
 
     summary = summarizer.get_summary(full_text, selected_option, add_prompt)
-    return render_template('result.html', dynamic_text=summary, title=title, subtitle=f'{selected_option} Summary')
+    return render_template('result.html', dynamic_text=summary, title=title, subtitle=f'Transcript Summary')
 
 
 #    ┌────────────────────────────────────────────────────────────────────┐
