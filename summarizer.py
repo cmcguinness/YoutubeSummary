@@ -10,6 +10,7 @@
 #    └─────────────────────────────────────────────────────────┘
 import deepinfra
 import open_ai
+import ollama
 import os
 import md2html
 
@@ -39,7 +40,9 @@ def get_summary(text, length, add_prompt):
     # Llama is way cheaper and seems to work, but  -mini isn't so bad either
 
     # We will choose which we use by whether there's an environment variable or not for the service
-    if os.getenv('DI_API_KEY') is not None:
+    if os.getenv('USE_OLLAMA') is not None:
+        client = ollama.Ollama()
+    elif os.getenv('DI_API_KEY') is not None:
         client = deepinfra.DeepInfra()
     else:
         client = open_ai.Open_AI()
