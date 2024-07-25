@@ -14,7 +14,6 @@ It uses one of two LLMs for this:
 Before you run it, set one of these three environment variables:
 
 * USE_OLLAMA=True
-
 * DI_API_KEY=*your api key for Deep Infra*
 * OPENAI_API_KEY=*your api key for Open AI*
 
@@ -24,6 +23,7 @@ Whichever one you supply, that's the service the app will use.
 
 * It uses a python library called `youtube-transcript-api` to retrieve the transcript.  It works, but it's clearly not using documented interfaces.  So don't be surprised if it gets broken at some point.
 * There's not a lot of error checking in the code, feel free to improve it!
+* Ollama on the desktop is a 4 bit version, while Deep Infra uses a 16 bit version.  You will see marked differences in quality of outputs.
 
 ## Authentication
 By default, the user id and password are both `admin`.
