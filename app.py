@@ -29,6 +29,8 @@ app.secret_key = 'The Rain in Spain falls Mainly on the Plain!'
 #    └─────────────────────────────────────────────────────────┘
 @app.route("/")
 def get_login_page():
+    print(f'/: {request.method} {request.url} from {request.remote_addr}', flush=True)
+
     if 'authenticated' in session:
         return index_page()
 
@@ -43,6 +45,8 @@ def get_login_page():
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    print(f'/login: {request.method} {request.url} from {request.remote_addr}', flush=True)
+
     if request.method == 'POST':
         user_id = request.form['user_id']
         password = request.form['password']
@@ -59,6 +63,8 @@ def login():
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/summarizer')
 def index_page():
+    print(f'/summarizer: {request.method} {request.url} from {request.remote_addr}', flush=True)
+
     if 'authenticated' not in session:
         return get_login_page()
     return render_template('index.html', variable_list=summarizer.summary_types, title='Which video to summarize?')
@@ -72,6 +78,8 @@ def index_page():
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/result', methods=['POST'])
 def result():
+    print(f'/result: {request.method} {request.url} from {request.remote_addr}', flush=True)
+
     if 'authenticated' not in session:
         return get_login_page()
     youtube_video_id = request.form['youtube_video_id']
