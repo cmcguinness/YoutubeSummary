@@ -23,6 +23,7 @@ def convert_md_to_html(md: str) -> str:
     ul_stack = []  # Stack to keep track of nested <ul>
     ul_types = []
 
+    padding = ''
     for line in lines:
         # Look for **Bold** cin comments or *italics* and convert them to HTML markup
         line = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', line)
@@ -65,7 +66,7 @@ def convert_md_to_html(md: str) -> str:
                 ul_types.append(ul_type)
                 html += f'<{ul_type}>\n'
             elif level < ul_stack[-1]:
-                while level < ul_stack[-1]:
+                while len(ul_stack) > 0 and level < ul_stack[-1]:
                     ul_stack.pop()
                     html += f'</{ul_types[-1]}>\n'
                     ul_types.pop()
@@ -73,12 +74,19 @@ def convert_md_to_html(md: str) -> str:
             continue
 
         if state == 'UL' or state == 'OL':
-            while ul_stack:
-                ul_stack.pop()
-                html += f'</{ul_types[-1]}>\n'
-                ul_types.pop()
-            state = 'NONE'
+            if len(line) == 0:
+                padding = '<br/>\n'
+                continue
+            else:
+                while ul_stack:
+                    ul_stack.pop()
+                    html += f'</{ul_types[-1]}>\n'
+                    ul_types.pop()
+                state = 'NONE'
 
+        if len(padding) > 0:
+            html += padding
+            padding = ''
         if line == '<EndOfFile>':
             break
 
