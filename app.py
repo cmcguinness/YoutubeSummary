@@ -16,9 +16,10 @@ import summarizer
 import userauth
 
 app = Flask(__name__)
+
 # Set the secret key to some random bytes. Keep this really secret!
 # You should change this from my default!!!
-app.secret_key = 'The Rain in Spain falls Mainly on the Plain!'
+app.secret_key = os.getenv('SESSION_KEY', 'The Rain in Spain falls Mainly on the Plain!')
 
 @app.before_request
 def before_request():
