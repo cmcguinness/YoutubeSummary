@@ -14,7 +14,7 @@ class Open_AI:
     def ask(self, system_prompt, user):
         print('Making Request to GPT', flush=True)
         completion = self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user}

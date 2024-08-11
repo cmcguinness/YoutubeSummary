@@ -11,6 +11,7 @@
 import deepinfra
 import open_ai
 import ollama
+import hf
 import os
 import md2html
 
@@ -54,6 +55,8 @@ def get_summary(text, length, add_prompt):
     # We will choose which we use by whether there's an environment variable or not for the service
     if os.getenv('USE_OLLAMA') is not None:
         client = ollama.Ollama()
+    elif os.getenv('HF_API_KEY') is not None:
+        client = hf.HF()
     elif os.getenv('DI_API_KEY') is not None:
         client = deepinfra.DeepInfra()
     else:
