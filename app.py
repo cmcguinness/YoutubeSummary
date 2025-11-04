@@ -95,7 +95,16 @@ def result():
         full_text = youtuber.get_transcript(youtube_video_id)
         title = youtuber.get_title(youtube_video_id)
     except youtuber.YouTubeError:
-        return render_template('result.html', dynamic_text=f'Video {youtube_video_id} not found', title='Error', subtitle=f'Cannot find video')
+        error_msg = f'''<p>Unable to retrieve transcript for video: <strong>{youtube_video_id}</strong></p>
+        <p>This could happen if:</p>
+        <ul>
+            <li>The video doesn't have transcripts/captions available</li>
+            <li>The video is age-restricted or private</li>
+            <li>The video ID is invalid</li>
+            <li>YouTube has changed their API format</li>
+        </ul>
+        <p>Please try a different video or check that the video has captions enabled.</p>'''
+        return render_template('result.html', dynamic_text=error_msg, title='Error', subtitle='Cannot retrieve transcript')
 
     if selected_option == "Full Transcript":
         full_text = '<pre>\n' + full_text + "\n</pre>\n"

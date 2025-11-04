@@ -91,12 +91,18 @@ def get_transcript(video_id):
     video_id = get_id(video_id)
 
     try:
-        transcript = youtube_transcript_api.YouTubeTranscriptApi.get_transcript(video_id)
-    except youtube_transcript_api.NoTranscriptFound:
+        # New API in youtube-transcript-api 1.x
+        api = youtube_transcript_api.YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
+        transcript = transcript_list.find_transcript(['en'])
+        transcript_data = transcript.fetch()
+    except Exception:
+        # Catch all YouTube API errors: NoTranscriptFound, XML parsing errors,
+        # HTTP errors, age-restricted videos, etc.
         raise YouTubeError
 
     full_text = f'# Transcript of "{get_title(video_id)}"\n\n'
-    for t in transcript:
-        full_text += f"[{secs2string(t['start'])}] - {t['text']} <br>\n"
+    for t in transcript_data:
+        full_text += f"[{secs2string(t.start)}] - {t.text} <br>\n"
 
     return full_text

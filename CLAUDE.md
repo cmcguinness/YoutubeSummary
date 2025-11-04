@@ -4,46 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-YouTube Summarizer is a Flask web application that extracts YouTube video transcripts and uses AI to generate summaries of varying lengths. The app supports multiple LLM providers including Ollama (local), Deep Infra, Hugging Face, and OpenAI.
-
-## Architecture
-
-The application follows a modular Flask architecture:
-
-- **app.py**: Main Flask application with routes, authentication, and request handling
-- **summarizer.py**: Core orchestration logic that selects LLM provider and processes prompts
-- **youtuber.py**: YouTube integration for transcript extraction and video metadata
-- **LLM Provider Modules**: Individual classes for each AI service
-  - `ollama.py`: Local Ollama integration
-  - `deepinfra.py`: Deep Infra API using OpenAI-compatible interface
-  - `hf.py`: Hugging Face Inference API with custom token formatting
-  - `open_ai.py`: Direct OpenAI API integration
-- **userauth.py**: Simple session-based authentication system
-- **md2html.py**: Markdown to HTML conversion for AI responses
-- **prompts/**: Directory containing prompt templates for different summary lengths
-
-## Environment Setup
-
-The application selects its LLM provider based on environment variables (checked in order):
-1. `USE_OLLAMA=True` - Uses local Ollama installation
-2. `HF_API_KEY=<key>` - Uses Hugging Face Inference API
-3. `DI_API_KEY=<key>` - Uses Deep Infra API
-4. `OPENAI_API_KEY=<key>` - Uses OpenAI API (fallback)
-
-Additional environment variables:
-- `SESSION_KEY`: Flask session secret key (defaults to hardcoded value)
-- `USERDB`: JSON string for custom user authentication (e.g., `{"bob": "pass1"}`)
+YouTube Summarizer is a Flask web application that extracts YouTube video transcripts and uses AI to generate summaries of varying lengths. The app supports multiple LLM providers including Ollama (local), Hugging Face, Deep Infra, and OpenAI.
 
 ## Development Commands
 
-### Running the Application
+### Running Locally
 ```bash
-python app.py  # Runs locally with auto port detection and browser opening
+python app.py  # Auto-selects free port and opens browser
 ```
 
 ### Production Deployment
 ```bash
-gunicorn --timeout 300 -w 1 app:app  # As specified in Procfile
+gunicorn --timeout 300 -w 1 app:app
 ```
 
 ### Installing Dependencies
@@ -51,43 +23,68 @@ gunicorn --timeout 300 -w 1 app:app  # As specified in Procfile
 pip install -r requirements.txt
 ```
 
-## Key Implementation Details
+## Architecture
 
-### LLM Provider Selection
-The `summarizer.py` module implements a provider hierarchy that automatically selects the first available LLM service based on environment variables. Each provider implements a common `ask(system_prompt, user_prompt)` interface.
+### Request Flow
+1. User authenticates via `/login` (session-based, checked by `@app.before_request` hook)
+2. User submits YouTube URL at `/summarizer` endpoint
+3. `youtuber.py` extracts transcript using `youtube-transcript-api` library
+4. `summarizer.py` loads appropriate prompt template from `prompts/` directory
+5. Provider hierarchy selects first available LLM service based on environment variables
+6. LLM response (markdown) converted to HTML via custom `md2html.py` parser
+7. Result rendered in template with video title and summary
 
-### YouTube Integration
-The `youtuber.py` module handles multiple YouTube URL formats and uses the `youtube-transcript-api` library to extract transcripts. It includes custom URL parsing logic for various YouTube link formats.
+### LLM Provider Selection Hierarchy
+The `summarizer.py` module checks environment variables in this order:
+1. `USE_OLLAMA=True` → `ollama.py` (local Ollama at 127.0.0.1:11434)
+2. `HF_API_KEY=<key>` → `hf.py` (Hugging Face Inference API with custom token formatting)
+3. `DI_API_KEY=<key>` → `deepinfra.py` (Deep Infra using OpenAI-compatible interface)
+4. `OPENAI_API_KEY=<key>` → `open_ai.py` (fallback)
 
-### Prompt System
-Summary prompts are stored as markdown files in the `prompts/` directory, with filenames corresponding to word length targets (250.md, 500.md, 1000.md, 2500.md). The system uses template substitution to inject transcripts and additional user prompts.
+All providers implement `ask(system_prompt, user_prompt)` interface.
 
-### Authentication Flow
-The app uses Flask sessions with a before_request hook that redirects unauthenticated users to `/login`. Authentication supports both default admin/admin credentials and custom user databases via environment variables.
+### Key Implementation Details
 
-## File Structure
+**YouTube URL Parsing**: `youtuber.py` handles multiple URL formats (watch, embed, live, youtu.be) by stripping protocols and known prefixes to extract video ID.
+
+**Prompt System**: Summary templates in `prompts/` use filename convention (250.md, 500.md, 1000.md, 2500.md) where number indicates target word count. Templates use `{text}` placeholder for transcript injection.
+
+**Hugging Face Integration**: Unlike other providers, HF requires manual token formatting with `<|begin_of_text|>`, `<|start_header_id|>system<|end_header_id|>`, etc. The response must be parsed to extract content after `<|start_header_id|>assistant<|end_header_id|>`.
+
+**Markdown Conversion**: Custom `md2html.py` parser handles nested lists (UL/OL), bold/italic, headers, and horizontal rules. Built because standard libraries don't handle nested lists well.
+
+**Port Selection**: `find_free_port()` dynamically binds to available port to avoid conflicts with Flask's default 5000.
+
+**Request Logging**: All requests logged to stdout via `@app.before_request` hook showing method, path, and remote address.
+
+## Environment Variables
+
+Authentication:
+- `SESSION_KEY`: Flask session secret (defaults to hardcoded value)
+- `USERDB`: JSON string for custom users (e.g., `{"bob": "pass1"}`, defaults to admin/admin)
+
+LLM Provider (set ONE):
+- `USE_OLLAMA=True`: Use local Ollama
+- `HF_API_KEY=<key>`: Use Hugging Face
+- `DI_API_KEY=<key>`: Use Deep Infra
+- `OPENAI_API_KEY=<key>`: Use OpenAI
+
+## File Organization
 
 ```
-├── app.py              # Main Flask application
-├── summarizer.py       # Core AI orchestration
-├── youtuber.py         # YouTube API integration
-├── ollama.py          # Ollama provider
-├── deepinfra.py       # Deep Infra provider
-├── hf.py              # Hugging Face provider
-├── open_ai.py         # OpenAI provider
-├── userauth.py        # Authentication system
-├── md2html.py         # Markdown conversion
-├── prompts/           # AI prompt templates
-│   ├── system_prompt.md
-│   ├── 250.md
-│   ├── 500.md
-│   ├── 1000.md
-│   └── 2500.md
-├── templates/         # Jinja2 HTML templates
-├── static/           # Static assets
-└── requirements.txt  # Python dependencies
+├── app.py              # Flask routes, authentication, request flow
+├── summarizer.py       # Provider selection and orchestration
+├── youtuber.py         # Transcript extraction and URL parsing
+├── ollama.py           # Ollama provider (POST to 127.0.0.1:11434/api/chat)
+├── hf.py               # Hugging Face provider with custom token formatting
+├── deepinfra.py        # Deep Infra provider (OpenAI-compatible)
+├── open_ai.py          # OpenAI provider (gpt-4o)
+├── userauth.py         # Session authentication
+├── md2html.py          # Custom markdown parser for nested lists
+├── prompts/            # Markdown templates with {text} placeholder
+└── templates/          # Jinja2 HTML templates
 ```
 
 ## Testing
 
-The application includes basic error handling for YouTube API failures and LLM timeouts. Manual testing can be performed by running the Flask development server and navigating through the web interface.
+Manual testing via web interface after running `python app.py`. Chrome DevTools integration recommended for UI testing per user expectations.

@@ -1,4 +1,4 @@
-youtube-transcript-api~=0.6.2
+youtube-transcript-api~=1.2.3
 openai~=1.37.0
 requests~=2.32.3
 gunicorn~=22.0.0
