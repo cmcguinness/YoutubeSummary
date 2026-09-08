@@ -54,12 +54,30 @@ Goal: a working app demoable in the browser, end-to-end, against a real video.
 - [ ] True token streaming (the request is still one blocking POST). Only worth
       doing if the current spinner proves insufficient in real use.
 
-### M5 — Tests & deploy ◐ PARTIAL
+### M5 — Tests & deploy ✅ DONE
 - [x] Test suite — 47 tests covering URL parsing, markdown conversion, auth,
       lockout, and route-level access control. `python -m pytest`.
-- [ ] Deploy to Dokku on pi5. **HTTP only — LAN-only host, no Let's Encrypt.**
-      Not started; needs a Charles decision on whether this replaces the
-      railway.app deployment referenced in the old README.
+- [x] Deployed to Dokku on **pi4** at http://ytsummary.pi4.mcguinness.ai
+      **HTTP only — LAN-only host, no Let's Encrypt, this is correct.**
+
+#### Deployment notes
+- Git remote: `dokku` → `dokku@pi4.mcguinness.ai:ytsummary`. Deploy with
+  `git push dokku main`.
+- pi4 is **arm64**, where Dokku refuses the herokuish builder and falls back to
+  a `pack` builder that isn't installed. Hence the `Dockerfile` and
+  `dokku builder:set ytsummary selected dockerfile`. A buildpack deploy cannot
+  work on this host.
+- Dokku read `EXPOSE 8000` and mapped `http:8000:8000`, serving on port 8000 and
+  404ing on 80. Corrected with `dokku ports:set ytsummary http:80:8000`.
+- nginx proxy read/send timeouts raised to 300s to match the app's own timeout.
+- Config vars set on the host: `OPENAI_API_KEY`, `SESSION_KEY`, `USERDB`,
+  `PYTHONUNBUFFERED`. `HTTPS_ONLY` is deliberately unset — the session cookie
+  must not be marked Secure over plain HTTP.
+- Login: user `charles`. Password was generated at deploy time and given to
+  Charles in-session; rotate with `python userauth.py <user> <pass>` then
+  `dokku config:set ytsummary USERDB='...'`.
+- Build takes several minutes on the Pi. Verified end-to-end after deploy:
+  login, transcript fetch, and a real summary (~7s, $0.0005).
 
 ---
 
@@ -102,8 +120,8 @@ Installed versions vs. old pins in `requirements.txt`:
   one piece of custom markdown handling left, and it is unit-tested.
 
 ## Open threads
-- Deploy target: pi5 Dokku, or leave it local? The old README mentions
-  railway.app.
+- The old README referenced a railway.app deployment. If one is still running,
+  it is now redundant and should be shut down — not checked.
 - True streaming (M4) — deferred; the spinner may well be enough.
 - No default admin account any more, so an existing deployment needs `USERDB`
   set before it will accept a login.
