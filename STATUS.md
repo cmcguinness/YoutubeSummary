@@ -108,6 +108,22 @@ Installed versions vs. old pins in `requirements.txt`:
 
 ---
 
+### M6 — Follow-on features ✅ DONE (2026-09-08)
+- [x] `DISABLE_AUTH=true` removes the login entirely. Set on pi4, where a login
+      screen on a LAN-only box is just ceremony. Warns at startup, bounces
+      `/login`, hides the log out button. `USERDB` is unused when it's on.
+- [x] Chat with the transcript, on every result page. `/chat` takes JSON,
+      answers from the transcript with `[HH:MM:SS]` citations, and declines to
+      answer from outside knowledge.
+      - Conversation is held in the browser and posted back each turn, so the
+        endpoint is stateless and stays correct across both gunicorn workers.
+        A cookie wouldn't fit a transcript, and an in-process cache wouldn't be
+        shared between workers.
+      - History is trimmed to `MAX_HISTORY_MESSAGES` and role-filtered server
+        side, so a client can't inject a forged system turn.
+      - `youtuber._fetch_transcript` is now memoized (chat re-asks for the same
+        transcript every turn): 1.03s → 0.000s on a repeat.
+
 ## Decisions taken
 - **Ollama / HuggingFace / DeepInfra providers deleted** (Charles, 2026-09-08).
   OpenAI is the only provider. `ollama.py`, `hf.py`, `deepinfra.py`,
