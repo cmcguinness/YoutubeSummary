@@ -1,1 +1,21 @@
-/* None yet */
+.brand-color { color: #094B02 !important; }
+
+.summary { max-width: 46rem; line-height: 1.65; }
+.summary h1 { font-size: 1.6rem; margin-top: 1.75rem; }
+.summary h2 { font-size: 1.3rem; margin-top: 1.5rem; }
+.summary h3 { font-size: 1.1rem; margin-top: 1.25rem; }
+.summary li { margin-bottom: .35rem; }
+.summary table { width: 100%; margin: 1rem 0; border-collapse: collapse; }
+.summary th, .summary td { border: 1px solid #dee2e6; padding: .4rem .6rem; }
+
+.transcript {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .375rem;
+    padding: 1rem;
+    font-size: .875rem;
+    max-height: 70vh;
+    overflow-y: auto;
+}

@@ -1,0 +1,13 @@
+{% extends "layout.html" %}
+{% block content %}
+    <h1 class="h3">{{ subtitle }}</h1>
+    <div class="alert alert-danger mt-3">{{ reason }}</div>
+    <p>This usually means one of the following:</p>
+    <ul>
+        <li>The video has no transcript or captions available</li>
+        <li>The video is private, age-restricted, or region-blocked</li>
+        <li>The URL or video ID was not valid</li>
+        <li>The AI service was unreachable or rejected the request</li>
+    </ul>
+    <a class="btn btn-primary mt-2" href="{{ url_for('index_page') }}">Try another video</a>
+{% endblock %}

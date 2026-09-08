@@ -6,73 +6,110 @@
 #    │          adjusting the length of the summary.           │
 #    │                                                         │
 #    └─────────────────────────────────────────────────────────┘
-
-from flask import Flask, render_template, request, session
-import socket
 import os
-import time
-import youtuber
+import secrets
+import socket
+from datetime import timedelta
+
+from dotenv import load_dotenv
+from flask import (Flask, redirect, render_template, request, session, url_for)
+from flask_wtf.csrf import CSRFProtect
+
+# Read .env before anything reads os.getenv() at import time
+load_dotenv()
+
+import llm
 import summarizer
+import youtuber
 import userauth
 
 app = Flask(__name__)
 
-# Set the secret key to some random bytes. Keep this really secret!
-# You should change this from my default!!!
-app.secret_key = os.getenv('SESSION_KEY', 'The Rain in Spain falls Mainly on the Plain!')
+# A generated key logs everyone out on restart, which beats shipping a
+# well-known default that lets anyone forge a session cookie.
+app.secret_key = os.getenv('SESSION_KEY') or secrets.token_hex(32)
+if not os.getenv('SESSION_KEY'):
+    print('WARNING: SESSION_KEY is not set; sessions will not survive a restart.', flush=True)
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    # Only send the cookie over TLS when we're actually served over TLS
+    SESSION_COOKIE_SECURE=os.getenv('HTTPS_ONLY', '').lower() == 'true',
+    PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    MAX_CONTENT_LENGTH=64 * 1024,
+)
+
+csrf = CSRFProtect(app)
+
+PUBLIC_ENDPOINTS = {'login', 'static'}
+
 
 @app.before_request
 def before_request():
-
     # We're going to log every request, so we can see what's going on
-    print(f'{request.method} {request.full_path[:-1]} from {request.remote_addr}', flush=True)
+    print(f'{request.method} {request.path} from {request.remote_addr}', flush=True)
 
-    # If we're not authenticated, we're going to redirect to the login page
-    if 'authenticated' not in session:
-        if request.endpoint != 'get_login_page' and request.endpoint != 'login':
-            return get_login_page()
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
 
-#    ┌─────────────────────────────────────────────────────────┐
-#    │                            /                            │
-#    │                                                         │
-#    │          If logged in, present the start page.          │
-#    │            If not, ask them to authenticate.            │
-#    └─────────────────────────────────────────────────────────┘
-@app.route("/")
-def get_login_page():
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
 
-    if 'authenticated' in session:
-        return index_page()
-
-    return render_template('login.html', title='Login Please')
+    return None
 
 
 #    ┌─────────────────────────────────────────────────────────┐
 #    │                         /login                          │
 #    │                                                         │
 #    │          Validate their user id and password.           │
-#    │     Sleep for a while on failure to slow down bots.     │
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if session.get('authenticated'):
+        return redirect(url_for('index_page'))
 
     if request.method == 'POST':
-        user_id = request.form['user_id']
-        password = request.form['password']
-        if userauth.authenticate(user_id, password):
+        user_id = request.form.get('user_id', '')
+        password = request.form.get('password', '')
+
+        try:
+            authenticated = userauth.authenticate(user_id, password, request.remote_addr)
+        except userauth.ConfigError as e:
+            return render_template('login.html', title='Login', error=str(e)), 500
+
+        if authenticated:
+            session.clear()
             session['authenticated'] = True
-            return index_page()
-    time.sleep(5)
-    return render_template('login.html', title='Invalid credentials, please try again')
+            session['user'] = user_id
+            session.permanent = True
+            return redirect(url_for('index_page'))
+
+        return render_template('login.html', title='Login',
+                               error='Invalid credentials, please try again.'), 401
+
+    return render_template('login.html', title='Login')
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
 
 #    ┌─────────────────────────────────────────────────────────┐
-#    │                       /summarizer                       │
+#    │                    /  and /summarizer                   │
 #    │                                                         │
 #    │       Solicit the YouTube URL and summary options       │
 #    └─────────────────────────────────────────────────────────┘
+@app.route('/')
 @app.route('/summarizer')
 def index_page():
-    return render_template('index.html', variable_list=summarizer.summary_types, title='Which video to summarize?')
+    return render_template('index.html',
+                           variable_list=summarizer.summary_types,
+                           models=llm.MODELS,
+                           default_model=llm.DEFAULT_MODEL,
+                           title='Which video to summarize?')
 
 
 #    ┌─────────────────────────────────────────────────────────┐
@@ -83,35 +120,38 @@ def index_page():
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/result', methods=['POST'])
 def result():
-    youtube_video_id = request.form['youtube_video_id']
-    selected_option = request.form['options']
-    add_prompt = ''
-
-    # You have to enable the form in the HTML for this to be present
-    if 'additional_prompt' in request.form:
-        add_prompt = request.form['additional_prompt']
+    video = request.form.get('youtube_video_id', '')
+    selected_option = request.form.get('options', '')
+    model = request.form.get('model') or None
+    add_prompt = request.form.get('additional_prompt', '')
 
     try:
-        full_text = youtuber.get_transcript(youtube_video_id)
-        title = youtuber.get_title(youtube_video_id)
-    except youtuber.YouTubeError:
-        error_msg = f'''<p>Unable to retrieve transcript for video: <strong>{youtube_video_id}</strong></p>
-        <p>This could happen if:</p>
-        <ul>
-            <li>The video doesn't have transcripts/captions available</li>
-            <li>The video is age-restricted or private</li>
-            <li>The video ID is invalid</li>
-            <li>YouTube has changed their API format</li>
-        </ul>
-        <p>Please try a different video or check that the video has captions enabled.</p>'''
-        return render_template('result.html', dynamic_text=error_msg, title='Error', subtitle='Cannot retrieve transcript')
+        title = youtuber.get_title(video)
+        transcript = youtuber.get_transcript(video, title=title)
+    except youtuber.YouTubeError as e:
+        return render_template('error.html',
+                               title='Error',
+                               subtitle='Cannot retrieve transcript',
+                               reason=str(e)), 400
 
-    if selected_option == "Full Transcript":
-        full_text = '<pre>\n' + full_text + "\n</pre>\n"
-        return render_template('result.html', dynamic_text=full_text, title=title, subtitle='Full transcript')
+    if selected_option == summarizer.FULL_TRANSCRIPT:
+        return render_template('result.html',
+                               transcript=transcript,
+                               title=title,
+                               subtitle='Full transcript')
 
-    summary = summarizer.get_summary(full_text, selected_option, add_prompt)
-    return render_template('result.html', dynamic_text=summary, title=title, subtitle=f'Transcript Summary')
+    try:
+        summary = summarizer.get_summary(transcript, selected_option, add_prompt, model=model)
+    except (llm.LLMError, ValueError) as e:
+        return render_template('error.html',
+                               title='Error',
+                               subtitle='Could not generate a summary',
+                               reason=str(e)), 502
+
+    return render_template('result.html',
+                           summary=summary,
+                           title=title,
+                           subtitle='Transcript Summary')
 
 
 #    ┌────────────────────────────────────────────────────────────────────┐
@@ -132,9 +172,10 @@ def find_free_port():
 #    │    having to click.                                      │
 #    └──────────────────────────────────────────────────────────┘
 if __name__ == '__main__':
-    port = find_free_port()
-    if os.name == 'nt':
-        os.system(f'explorer "http:/127.0.0.1:{port}"')
-    else:
-        os.system(f'open http://127.0.0.1:{port}')
+    port = int(os.getenv('PORT') or find_free_port())
+    if os.getenv('NO_BROWSER', '').lower() != 'true':
+        if os.name == 'nt':
+            os.system(f'explorer "http://127.0.0.1:{port}"')
+        else:
+            os.system(f'open http://127.0.0.1:{port}')
     app.run(port=port, debug=False)

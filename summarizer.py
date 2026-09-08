@@ -8,12 +8,16 @@
 #    │         Length is not well honored, but we try.         │
 #    │                                                         │
 #    └─────────────────────────────────────────────────────────┘
-import deepinfra
-import open_ai
-import ollama
-import hf
-import os
-import md2html
+import re
+from pathlib import Path
+
+import markdown
+
+import llm
+
+PROMPTS = Path(__file__).parent / 'prompts'
+
+FULL_TRANSCRIPT = 'Full Transcript'
 
 # Options we present for summary lengths
 summary_types = [
@@ -21,53 +25,105 @@ summary_types = [
     {"name": "Short summary and bullets", "value": "500"},
     {"name": "Longer summary with more details", "value": "1000"},
     {"name": "Summary, Themes, and Analysis with Timings", "value": "2500"},
-    {"name": "Full Transcript, no AI summarization of contents", "value": "Full Transcript"},
+    {"name": "Full Transcript, no AI summarization of contents", "value": FULL_TRANSCRIPT},
 ]
 
-def get_summary(text, length, add_prompt):
-    # We use the first word of the length radio button label as our key to find the appropriate
-    # prompt file that will (try to) generate a summary of that length
-    if " " in length:
-        key = length[:length.find(" ")]
-    else:
-        key = length
+# LLMs like to wrap their whole answer in a ```markdown fence even when asked
+# not to, and sometimes add a line of chat before it. Strip that back off.
+_FENCE_RE = re.compile(
+    r'^\s*(?:[^\n`]*\n)??```(?:markdown|md|text)?\s*\n(?P<body>.*?)\n?\s*```\s*$',
+    re.DOTALL | re.IGNORECASE,
+)
 
 
-    with open(f'prompts/{key}.md', 'r') as f:
-        user = f.read()
+def strip_code_fence(text):
+    """Return the contents of a fence wrapping the entire response, if any."""
+    match = _FENCE_RE.match(text.strip())
+    if match:
+        return match.group('body')
+    return text.strip()
 
-    # Much nicer than trying to embed prompts inline in the code
-    with open('prompts/system_prompt.md', 'r') as f:
-        system_prompt = f.read()
+
+_LIST_ITEM_RE = re.compile(r'^(?P<indent>[ \t]*)(?P<marker>[-*+]|\d+[.)])(?P<rest>\s+\S.*)$')
+_FENCE_LINE_RE = re.compile(r'^\s*(```|~~~)')
+
+
+def normalize_list_indents(text):
+    """Re-indent nested list items to the 4 spaces Python-Markdown requires.
+
+    Models habitually indent nested bullets by two spaces, which Python-Markdown
+    reads as a sibling rather than a child -- the whole reason this project
+    originally shipped a hand-written markdown parser. Rescaling the indentation
+    lets us use the library instead.
+    """
+    lines = text.split('\n')
+    output = []
+    # Stack of source indent widths, one per open nesting level
+    levels = []
+    in_fence = False
+
+    for line in lines:
+        if _FENCE_LINE_RE.match(line):
+            in_fence = not in_fence
+            output.append(line)
+            continue
+
+        if in_fence:
+            output.append(line)
+            continue
+
+        match = _LIST_ITEM_RE.match(line)
+        if not match:
+            # A blank line keeps a list open; anything else at column 0 ends it
+            if line.strip() and not line.startswith((' ', '\t')):
+                levels = []
+            output.append(line)
+            continue
+
+        width = len(match.group('indent').expandtabs(4))
+
+        while levels and width < levels[-1]:
+            levels.pop()
+        if not levels or width > levels[-1]:
+            levels.append(width)
+
+        depth = len(levels) - 1
+        output.append(' ' * (4 * depth) + match.group('marker') + match.group('rest'))
+
+    return '\n'.join(output)
+
+
+def md_to_html(text):
+    """Convert model markdown to HTML, handling nested lists and tables."""
+    cleaned = normalize_list_indents(strip_code_fence(text))
+    return markdown.markdown(cleaned, extensions=['extra', 'sane_lists'])
+
+
+def _load_prompt(name):
+    return (PROMPTS / name).read_text(encoding='utf-8')
+
+
+def get_summary(text, length, add_prompt='', model=None):
+    """Summarize a transcript. Returns HTML."""
+
+    # We use the first word of the length radio button label as our key to find
+    # the appropriate prompt file that will (try to) generate that length
+    key = length.split(' ')[0]
+
+    if not key.isdigit():
+        raise ValueError(f'Unknown summary length "{length}"')
+
+    user = _load_prompt(f'{key}.md')
+    system_prompt = _load_prompt('system_prompt.md')
 
     # Patch the transcript into the user prompt
     user = user.replace('{text}', text)
 
-    # If we're alloing additional prompts from the user, add it in
-    user = user + '\n' + add_prompt
+    # If we're allowing additional prompts from the user, add it in
+    if add_prompt:
+        user = user + '\n' + add_prompt
 
-    # Some diagnostics
-    # print(f'user {len(user)} system {len(system_prompt)}', flush=True)
-
-    # We can either use Deep Infra's Llama 3.1 8b model or OpenAI's gpt-4o-mini
-    # Llama is way cheaper and seems to work, but  -mini isn't so bad either
-
-    # We will choose which we use by whether there's an environment variable or not for the service
-    if os.getenv('USE_OLLAMA') is not None:
-        client = ollama.Ollama()
-    elif os.getenv('HF_API_KEY') is not None:
-        client = hf.HF()
-    elif os.getenv('DI_API_KEY') is not None:
-        client = deepinfra.DeepInfra()
-    else:
-        client = open_ai.Open_AI()
-
-    # Actual logic for making the call is in a class
+    client = llm.OpenAIClient(model=model)
     raw = client.ask(system_prompt, user)
 
-    # # Diagnostic outputs
-    # print('Raw content:')
-    # print(raw, flush=True)
-
-    # Convert the markdown to HTML and we're done!
-    return md2html.convert_md_to_html(raw)
+    return md_to_html(raw)
