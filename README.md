@@ -25,7 +25,7 @@ Settings are read from the environment, or from a `.env` file in the project roo
 |---|---|---|
 | `OPENAI_API_KEY` | yes | Your OpenAI API key |
 | `USERDB` | yes | JSON object of `{username: password_hash}` |
-| `SESSION_KEY` | recommended | Flask session secret. If unset, one is generated at startup and every restart logs users out |
+| `SESSION_KEY` | yes in production | Flask session secret. If unset, each worker generates its own and logins break across workers |
 | `OPENAI_MODEL` | no | Overrides the default model (`gpt-5.6-luna`) |
 | `HTTPS_ONLY` | no | Set to `true` when served over TLS, to mark the session cookie `Secure` |
 | `PORT` / `NO_BROWSER` | no | Useful when running headless |
