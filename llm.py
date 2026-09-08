@@ -72,6 +72,37 @@ class OpenAIClient:
 
         return text
 
+    def converse(self, system_prompt, messages):
+        """Ask a follow-up question with prior turns for context.
+
+        `messages` is a list of {'role': 'user'|'assistant', 'content': str},
+        oldest first, ending with the question being asked now.
+        """
+        print(f'Chatting with {self.model} ({len(messages)} messages)', flush=True)
+
+        try:
+            response = self.client.responses.create(
+                model=self.model,
+                instructions=system_prompt,
+                input=messages,
+                reasoning={'effort': self.effort},
+                max_output_tokens=MAX_OUTPUT_TOKENS,
+            )
+        except OpenAIError as e:
+            raise LLMError(f'The AI service returned an error: {e}') from e
+
+        self.last_usage = response.usage
+        if response.usage:
+            print(f'Used {response.usage.input_tokens} in / '
+                  f'{response.usage.output_tokens} out '
+                  f'(~${self.estimate_cost():.4f})', flush=True)
+
+        text = response.output_text
+        if not text or not text.strip():
+            raise LLMError('The AI service returned an empty response.')
+
+        return text
+
     def estimate_cost(self):
         if not self.last_usage:
             return 0.0

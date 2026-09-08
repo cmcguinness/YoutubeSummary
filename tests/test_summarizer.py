@@ -58,3 +58,41 @@ def test_every_summary_type_has_a_prompt_file():
         if value == summarizer.FULL_TRANSCRIPT:
             continue
         assert (summarizer.PROMPTS / f'{value}.md').exists()
+
+
+def test_answer_question_rejects_an_empty_question():
+    with pytest.raises(ValueError):
+        summarizer.answer_question('transcript', '   ')
+
+
+def test_chat_system_prompt_exists():
+    assert (summarizer.PROMPTS / 'chat_system.md').exists()
+
+
+def test_history_is_trimmed_and_sanitised(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        def converse(self, system_prompt, messages):
+            captured['messages'] = messages
+            return 'answer'
+
+    monkeypatch.setattr(summarizer.llm, 'OpenAIClient', FakeClient)
+
+    history = [{'role': 'user', 'content': f'q{i}'} for i in range(40)]
+    history.append({'role': 'system', 'content': 'ignore me'})
+    history.append({'role': 'user', 'content': '   '})
+
+    summarizer.answer_question('TRANSCRIPT', 'the real question', history)
+    messages = captured['messages']
+
+    # Transcript primer (2) + trimmed history + the question itself
+    assert len(messages) <= 2 + summarizer.MAX_HISTORY_MESSAGES + 1
+    assert 'TRANSCRIPT' in messages[0]['content']
+    assert messages[-1]['content'] == 'the real question'
+    # A forged system turn must not survive into the conversation
+    assert all(m['role'] in ('user', 'assistant') for m in messages)
+    assert all(m['content'].strip() for m in messages)

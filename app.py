@@ -12,7 +12,8 @@ import socket
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import (Flask, redirect, render_template, request, session, url_for)
+from flask import (Flask, jsonify, redirect, render_template, request, session,
+                   url_for)
 from flask_wtf.csrf import CSRFProtect
 
 # Read .env before anything reads os.getenv() at import time
@@ -42,7 +43,19 @@ app.config.update(
 
 csrf = CSRFProtect(app)
 
+# On a LAN-only host the login screen is mostly ceremony. Setting DISABLE_AUTH
+# turns it off entirely -- everyone who can reach the app is let straight in.
+AUTH_DISABLED = os.getenv('DISABLE_AUTH', '').lower() in ('1', 'true', 'yes')
+if AUTH_DISABLED:
+    print('WARNING: DISABLE_AUTH is set. Anyone who can reach this app can use it.', flush=True)
+
 PUBLIC_ENDPOINTS = {'login', 'static'}
+
+
+@app.context_processor
+def inject_auth_state():
+    # Templates use this to decide whether to offer a Log out button
+    return {'auth_disabled': AUTH_DISABLED}
 
 
 @app.before_request
@@ -50,7 +63,7 @@ def before_request():
     # We're going to log every request, so we can see what's going on
     print(f'{request.method} {request.path} from {request.remote_addr}', flush=True)
 
-    if request.endpoint in PUBLIC_ENDPOINTS:
+    if AUTH_DISABLED or request.endpoint in PUBLIC_ENDPOINTS:
         return None
 
     if not session.get('authenticated'):
@@ -66,7 +79,7 @@ def before_request():
 #    └─────────────────────────────────────────────────────────┘
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if session.get('authenticated'):
+    if AUTH_DISABLED or session.get('authenticated'):
         return redirect(url_for('index_page'))
 
     if request.method == 'POST':
@@ -134,10 +147,14 @@ def result():
                                subtitle='Cannot retrieve transcript',
                                reason=str(e)), 400
 
+    video_id = youtuber.get_id(video)
+
     if selected_option == summarizer.FULL_TRANSCRIPT:
         return render_template('result.html',
                                transcript=transcript,
                                title=title,
+                               video_id=video_id,
+                               model=model or llm.DEFAULT_MODEL,
                                subtitle='Full transcript')
 
     try:
@@ -151,7 +168,42 @@ def result():
     return render_template('result.html',
                            summary=summary,
                            title=title,
+                           video_id=video_id,
+                           model=model or llm.DEFAULT_MODEL,
                            subtitle='Transcript Summary')
+
+
+#    ┌─────────────────────────────────────────────────────────┐
+#    │                          /chat                          │
+#    │                                                         │
+#    │      Answer a follow-up question about a video's        │
+#    │        transcript. Called by JavaScript, so it          │
+#    │              speaks JSON in both directions.            │
+#    └─────────────────────────────────────────────────────────┘
+@app.route('/chat', methods=['POST'])
+def chat():
+    payload = request.get_json(silent=True) or {}
+    video_id = payload.get('video_id', '')
+    question = payload.get('question', '')
+    history = payload.get('history') or []
+    model = payload.get('model') or None
+
+    if not isinstance(history, list):
+        return jsonify({'error': 'Malformed conversation history.'}), 400
+
+    try:
+        transcript = youtuber.get_transcript(video_id)
+    except youtuber.YouTubeError as e:
+        return jsonify({'error': str(e)}), 400
+
+    try:
+        answer = summarizer.answer_question(transcript, question, history, model=model)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except llm.LLMError as e:
+        return jsonify({'error': str(e)}), 502
+
+    return jsonify({'answer': answer})
 
 
 #    ┌────────────────────────────────────────────────────────────────────┐

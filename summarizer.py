@@ -103,6 +103,42 @@ def _load_prompt(name):
     return (PROMPTS / name).read_text(encoding='utf-8')
 
 
+# Keep a chat from growing without bound; the transcript dominates the cost
+# anyway, but there's no reason to resend fifty turns of it.
+MAX_HISTORY_MESSAGES = 20
+
+
+def answer_question(transcript, question, history=None, model=None):
+    """Answer a follow-up question about a transcript. Returns HTML."""
+    if not question or not question.strip():
+        raise ValueError('Please enter a question.')
+
+    system_prompt = _load_prompt('chat_system.md')
+
+    history = list(history or [])[-MAX_HISTORY_MESSAGES:]
+
+    # The transcript rides along with the first user turn so it stays inside
+    # the conversation the model sees, rather than in the system instructions.
+    messages = [{
+        'role': 'user',
+        'content': f'Here is the transcript of the video I want to ask about:\n\n{transcript}',
+    }, {
+        'role': 'assistant',
+        'content': "I've read the transcript. What would you like to know?",
+    }]
+
+    for message in history:
+        role = message.get('role')
+        content = (message.get('content') or '').strip()
+        if role in ('user', 'assistant') and content:
+            messages.append({'role': role, 'content': content})
+
+    messages.append({'role': 'user', 'content': question.strip()})
+
+    client = llm.OpenAIClient(model=model)
+    return md_to_html(client.converse(system_prompt, messages))
+
+
 def get_summary(text, length, add_prompt='', model=None):
     """Summarize a transcript. Returns HTML."""
 

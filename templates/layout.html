@@ -12,7 +12,7 @@
     <div class="container">
         <a href="https://launch.ai-applets.com" class="navbar-brand brand-color">AI&nbsp;Applets</a>
         <a class="navbar-brand fw-semibold" href="{{ url_for('index_page') }}">YouTube Summarizer</a>
-        {% if session.get('authenticated') %}
+        {% if session.get('authenticated') and not auth_disabled %}
             <form class="ms-auto" action="{{ url_for('logout') }}" method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="btn btn-sm btn-outline-secondary" type="submit">Log out</button>

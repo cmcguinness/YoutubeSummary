@@ -15,4 +15,106 @@
         {# Transcript text comes from YouTube, so let Jinja escape it #}
         <pre class="transcript">{{ transcript }}</pre>
     {% endif %}
+
+    {% if video_id %}
+        <section class="chat mt-5" id="chat">
+            <h2 class="h5">Ask about this video</h2>
+            <p class="text-secondary small">
+                Questions are answered from the transcript, with timestamps where they apply.
+            </p>
+
+            <div id="chat-log" class="chat-log" aria-live="polite"></div>
+
+            <form id="chat-form" class="mt-3">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="chat-input"
+                           placeholder="What did they say about…?" autocomplete="off" required>
+                    <button class="btn btn-primary" type="submit" id="chat-send">Ask</button>
+                </div>
+            </form>
+        </section>
+
+        <script>
+            (function () {
+                const videoId = {{ video_id | tojson }};
+                const model = {{ model | tojson }};
+                const csrfToken = {{ csrf_token() | tojson }};
+
+                const log = document.getElementById('chat-log');
+                const form = document.getElementById('chat-form');
+                const input = document.getElementById('chat-input');
+                const send = document.getElementById('chat-send');
+
+                // The conversation lives in the page. The server stays stateless,
+                // which keeps it correct across multiple gunicorn workers.
+                const history = [];
+
+                function addBubble(role, html, isError) {
+                    const wrap = document.createElement('div');
+                    wrap.className = 'chat-msg chat-' + role + (isError ? ' chat-error' : '');
+                    wrap.innerHTML = html;
+                    log.appendChild(wrap);
+                    wrap.scrollIntoView({block: 'nearest', behavior: 'smooth'});
+                    return wrap;
+                }
+
+                function escapeHtml(text) {
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                }
+
+                form.addEventListener('submit', async function (event) {
+                    event.preventDefault();
+                    const question = input.value.trim();
+                    if (!question) return;
+
+                    addBubble('user', escapeHtml(question));
+                    input.value = '';
+                    input.disabled = true;
+                    send.disabled = true;
+
+                    const thinking = addBubble('assistant',
+                        '<span class="spinner-border spinner-border-sm"></span> Thinking…');
+
+                    try {
+                        const response = await fetch({{ url_for('chat') | tojson }}, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': csrfToken
+                            },
+                            body: JSON.stringify({
+                                video_id: videoId,
+                                question: question,
+                                history: history,
+                                model: model
+                            })
+                        });
+
+                        const data = await response.json().catch(function () {
+                            return {error: 'The server returned an unreadable response.'};
+                        });
+
+                        if (!response.ok || data.error) {
+                            thinking.className = 'chat-msg chat-assistant chat-error';
+                            thinking.textContent = data.error || ('Request failed (' + response.status + ').');
+                        } else {
+                            thinking.className = 'chat-msg chat-assistant';
+                            thinking.innerHTML = data.answer;
+                            history.push({role: 'user', content: question});
+                            history.push({role: 'assistant', content: thinking.textContent});
+                        }
+                    } catch (err) {
+                        thinking.className = 'chat-msg chat-assistant chat-error';
+                        thinking.textContent = 'Could not reach the server. Is it still running?';
+                    } finally {
+                        input.disabled = false;
+                        send.disabled = false;
+                        input.focus();
+                    }
+                });
+            })();
+        </script>
+    {% endif %}
 {% endblock %}

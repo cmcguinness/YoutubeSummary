@@ -7,6 +7,7 @@
 #    │        It will also get the title of the video.         │
 #    └─────────────────────────────────────────────────────────┘
 import re
+from functools import lru_cache
 from urllib.parse import urlparse, parse_qs
 
 import requests
@@ -108,14 +109,21 @@ def get_title(video_id):
 #    │ Retrieve the transcript from YouTube and then format it │
 #    │          into a single string with timestamps.          │
 #    └─────────────────────────────────────────────────────────┘
+@lru_cache(maxsize=16)
+def _fetch_transcript(video_id):
+    """Cached raw fetch. A transcript doesn't change, and the chat feature
+    asks for the same one on every turn."""
+    api = youtube_transcript_api.YouTubeTranscriptApi()
+    transcript_list = api.list(video_id)
+    transcript = transcript_list.find_transcript(['en'])
+    return list(transcript.fetch())
+
+
 def get_transcript(video_id, title=None):
     video_id = get_id(video_id)
 
     try:
-        api = youtube_transcript_api.YouTubeTranscriptApi()
-        transcript_list = api.list(video_id)
-        transcript = transcript_list.find_transcript(['en'])
-        transcript_data = transcript.fetch()
+        transcript_data = _fetch_transcript(video_id)
     except Exception as e:
         # Catch all YouTube API errors: NoTranscriptFound, XML parsing errors,
         # HTTP errors, age-restricted videos, etc.
